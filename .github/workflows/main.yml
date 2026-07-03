@@ -1,0 +1,57 @@
+name: Auto logo fetcher
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  download-logos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run Script
+        env:
+          fahh: ${{ secrets.fahh }}
+        shell: bash
+        run: |
+          pip install requests
+          python3 -c "
+          import requests, os
+          os.makedirs('category_logos', exist_ok=True)
+          os.makedirs('team_logos', exist_ok=True)
+          
+          url = os.environ.get('fahh')
+          if not url:
+              exit(0)
+          
+          try:
+              response = requests.get(url, timeout=10)
+              if response.status_code == 200:
+                  data = response.json()
+                  for event in data.get('events', []):
+                      cat = event.get('cat', 'unknown')
+                      if event.get('image') and cat != 'unknown':
+                          path = f'category_logos/{cat}.png'
+                          if not os.path.exists(path):
+                              with open(path, 'wb') as f: f.write(requests.get(event['image']).content)
+                      
+                      info = event.get('eventInfo', {})
+                      teams = [(info.get('teamA'), info.get('teamAFlag')), (info.get('teamB'), info.get('teamBFlag'))]
+                      for name, url_img in teams:
+                          if name and url_img:
+                              path = f'team_logos/{name}.png'
+                              if not os.path.exists(path):
+                                  with open(path, 'wb') as f: f.write(requests.get(url_img).content)
+          except:
+              pass
+          "
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add .
+          git diff --quiet && git diff --staged --quiet || (git commit -m 'Auto-updated logos' && git push)
